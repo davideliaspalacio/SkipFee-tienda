@@ -1,0 +1,52 @@
+/* Recorrido guiado del storefront (driver.js). Estilos GLOBALES porque driver
+   inyecta el popover en <body>. Usa los tokens del design system (brand.css). */
+
+.driver-popover.skipfee-tour {
+  background: var(--surface); color: var(--text); border-radius: var(--r-lg, 16px);
+  box-shadow: 0 30px 70px -28px oklch(0.10 0.04 250 / .7);
+  max-width: 480px; padding: 26px 28px 22px;
+}
+.driver-popover.skipfee-tour .driver-popover-title {
+  font-family: var(--font-display), sans-serif; font-size: 23px; line-height: 1.15;
+  letter-spacing: -.01em; color: var(--text); margin-bottom: 10px;
+}
+.driver-popover.skipfee-tour .driver-popover-description { font-size: 16px; line-height: 1.6; color: var(--text-muted); }
+.driver-popover.skipfee-tour .driver-popover-description b { color: var(--text); font-weight: 700; }
+.driver-popover.skipfee-tour .driver-popover-footer { gap: 10px; margin-top: 20px; }
+.driver-popover.skipfee-tour .driver-popover-footer button {
+  text-shadow: none; border-radius: 12px; font-family: var(--font-display), sans-serif;
+  font-weight: 700; font-size: 15px; padding: 12px 22px; border: none; cursor: pointer;
+  transition: background .15s, transform .12s;
+}
+.driver-popover.skipfee-tour .driver-popover-next-btn { background: var(--green); color: var(--green-ink, #0c3d1d); }
+.driver-popover.skipfee-tour .driver-popover-next-btn:hover { background: var(--green-strong, var(--green)); transform: translateY(-1px); }
+.driver-popover.skipfee-tour .driver-popover-prev-btn { background: var(--surface-2, #eef1ee); color: var(--text); }
+.driver-popover.skipfee-tour .driver-popover-arrow { color: var(--surface); }
+@media (max-width: 940px) {
+  .driver-popover.skipfee-tour { max-width: min(92vw, 380px); padding: 20px 20px 16px; }
+  .driver-popover.skipfee-tour .driver-popover-title { font-size: 19px; }
+  .driver-popover.skipfee-tour .driver-popover-description { font-size: 14.5px; }
+}
+
+/* barra de progreso (siempre por encima del overlay) */
+.tour-progress { position: fixed; top: 0; left: 0; right: 0; z-index: 2147483000; background: var(--ink); color: var(--on-ink); box-shadow: 0 6px 20px -8px oklch(0.10 0.04 250 / .7); }
+.tour-progress-track { height: 6px; background: oklch(1 0 0 / .12); }
+.tour-progress-track > span { display: block; height: 100%; background: var(--green); border-radius: 0 99px 99px 0; transition: width .4s ease; }
+.tour-progress-meta { display: flex; align-items: center; gap: 12px; padding: 9px clamp(14px, 3vw, 26px); }
+.tour-progress-section { font-family: var(--font-display), sans-serif; font-weight: 700; font-size: 14px; }
+.tour-progress-count { font-family: var(--mono, monospace); font-size: 12px; color: var(--on-ink-muted, #b9c0cc); }
+.tour-progress-mute { margin-left: auto; background: oklch(1 0 0 / .1); border: none; color: inherit; cursor: pointer; border-radius: 9px; padding: 5px 10px; font-size: 14px; line-height: 1; }
+.tour-progress-mute:hover { background: oklch(1 0 0 / .18); }
+
+/* modal final */
+.demo-final { position: fixed; inset: 0; z-index: 2147483001; display: grid; place-items: center; padding: 20px; background: oklch(0.10 0.04 250 / .62); backdrop-filter: blur(3px); }
+.demo-final-card { width: min(480px, 100%); background: var(--surface); border: 1px solid var(--line, #e6e8e6); border-radius: var(--r-xl, 26px); padding: clamp(30px, 4vw, 44px); text-align: center; box-shadow: 0 40px 90px -30px oklch(0.2 0.05 250 / .7); }
+.demo-final-emoji { font-size: 54px; line-height: 1; display: block; margin-bottom: 8px; }
+.demo-final-card h2 { font-family: var(--font-display), sans-serif; font-size: 1.6rem; margin: 6px 0; color: var(--text); }
+.demo-final-card p { color: var(--text-muted); font-size: 15.5px; line-height: 1.55; max-width: 40ch; margin: 0 auto; }
+.demo-final-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+.demo-final-actions .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; font-family: var(--font-display), sans-serif; font-weight: 700; font-size: 16px; padding: 14px 22px; border: none; cursor: pointer; text-decoration: none; transition: background .15s, transform .12s; }
+.demo-final-actions .btn-primary { background: var(--green); color: var(--green-ink, #0c3d1d); }
+.demo-final-actions .btn-primary:hover { background: var(--green-strong, var(--green)); transform: translateY(-1px); }
+.demo-final-actions .btn-ghost { background: var(--surface-2, #eef1ee); color: var(--text); }
+.demo-final-actions .btn-ghost:hover { background: var(--surface-3, #e4e7e4); }

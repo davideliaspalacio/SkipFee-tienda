@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OrderBuilder } from '@/components/OrderBuilder';
+import { StoreTour } from '@/components/StoreTour';
 import type { ActivePromotion, CheckoutValid } from '@/lib/checkout';
 
 /**
@@ -157,6 +158,7 @@ export default function DemoPage() {
   return (
     <QueryClientProvider client={qc}>
       <OrderBuilder data={MOCK_VALID} onUnusable={() => {}} />
+      <StoreTour />
     </QueryClientProvider>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Hanken_Grotesk, DM_Mono } from "next/font/google";
 import "./brand.css";
+import "./tour.css";
 import { Providers } from "./providers";
 
 // Mismas fuentes que la marca Skipfee (Bricolage display + Hanken body + DM Mono).

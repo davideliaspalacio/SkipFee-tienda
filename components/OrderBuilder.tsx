@@ -83,6 +83,15 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
   // Carrito + totales tal como los devolvió el server (fuente de verdad de precios).
   const [cart, setCart] = useState<Cart>(() => data.order.cart ?? EMPTY_CART);
 
+  // Ref al carrito actual para que `sync` lo lea SIN entrar en sus dependencias.
+  // Antes `cart.tip`/`cart.tipPercent` estaban en las deps de `sync`: cada respuesta
+  // del server recreaba `sync` → `setQty`/`onTip` → props nuevas en ProductCard/
+  // OrderPanel → re-render en cascada de toda la tienda. Con el ref, `sync` es estable.
+  const cartRef = useRef(cart);
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
   // Datos read-only que vinieron del bot (la dirección/zona/nombre/email se
   // capturan por WhatsApp antes de mandar el link). Si falta algo, NO debería
   // haber llegado acá — el OrderPanel muestra fallback amable en ese caso.
@@ -158,10 +167,10 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
       // el server la recalcula sobre el nuevo subtotal.
       const tipPart: { tipPercent?: number; tip?: number } =
         tipBody ??
-        (cart.tipPercent && cart.tipPercent > 0
-          ? { tipPercent: cart.tipPercent }
-          : cart.tip > 0
-            ? { tip: cart.tip }
+        (cartRef.current.tipPercent && cartRef.current.tipPercent > 0
+          ? { tipPercent: cartRef.current.tipPercent }
+          : cartRef.current.tip > 0
+            ? { tip: cartRef.current.tip }
             : { tip: 0 });
       const body: UpdateCartBody = { items, ...tipPart };
 
@@ -184,7 +193,7 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
         if (!silent) setSyncing(false);
       }
     },
-    [orderId, onUnusable, cart.tip, cart.tipPercent],
+    [orderId, onUnusable],
   );
 
   const setQty = useCallback(
@@ -1126,7 +1135,7 @@ function OrderPanel({
           </div>
         </div>
       )}
-      <button type="button" className={styles.payBtn} disabled={!canPay} onClick={onPay}>
+      <button type="button" data-testid="pay-button" className={styles.payBtn} disabled={!canPay} onClick={onPay}>
         {paying ? (
           <>
             <span className={styles.spin} />
