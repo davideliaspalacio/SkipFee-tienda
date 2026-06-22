@@ -174,14 +174,23 @@ export function StoreTour() {
     let timer = 0;
     let tries = 0;
     const run = () => {
-      const el = sel ? document.querySelector(sel) : null;
+      const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
       if (sel && !el && tries < 12) {
         tries += 1;
         timer = window.setTimeout(run, 110);
         return;
       }
-      if (sel && el) d.highlight({ element: sel, popover });
-      else d.highlight({ popover });
+      if (sel && el) {
+        // Centra el elemento destino en pantalla ANTES de resaltar: el foco queda
+        // claro aunque el cliente haya hecho scroll (lo "sube" solo) y driver
+        // calcula la posición del popover sobre una geometría ya estable.
+        el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+        timer = window.setTimeout(() => d.highlight({ element: sel, popover }), 70);
+      } else {
+        // Paso centrado (sin selector): llevamos la vista arriba para enfocar.
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        d.highlight({ popover });
+      }
     };
     timer = window.setTimeout(run, 90);
     return () => window.clearTimeout(timer);
