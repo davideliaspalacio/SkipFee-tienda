@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@/lib/icons';
 import { FoodIcon, pickFoodIcon, pickCategoryTheme } from '@/lib/foodIcons';
@@ -92,6 +92,14 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
     cartRef.current = cart;
   }, [cart]);
 
+  // Mismo patrón para `lines`: que setQty/onTip/handlePay lean la cantidad actual
+  // SIN tener `lines` en sus deps (si no, se recrean en cada edición y propagan
+  // callbacks nuevos a cada ProductCard, anulando el React.memo de los hijos).
+  const linesRef = useRef(lines);
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
   // Datos read-only que vinieron del bot (la dirección/zona/nombre/email se
   // capturan por WhatsApp antes de mandar el link). Si falta algo, NO debería
   // haber llegado acá — el OrderPanel muestra fallback amable en ese caso.
@@ -113,6 +121,9 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  // Espeja activeCat para que el scroll-spy evite setActiveCat redundantes
+  // (cada setState repinta el árbol mientras el cat no haya cambiado de verdad).
+  const activeCatRef = useRef(activeCat);
   const isClicking = useRef(false);
 
   // Lock del total mientras se paga. La propina se aplica de forma optimista y
@@ -198,13 +209,26 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
 
   const setQty = useCallback(
     (productId: string, qty: number) => {
-      const next = { ...lines };
+      const next = { ...linesRef.current };
       if (qty <= 0) delete next[productId];
       else next[productId] = Math.min(qty, 99);
       setLines(next);
       void sync(next);
     },
-    [lines, sync],
+    [sync],
+  );
+
+  // Handlers estables por-id: identidad fija entre renders (deps [setQty], que ya
+  // es estable). Así cada ProductCard/PromoActiveCard memoizado se re-renderiza
+  // SOLO cuando cambia su propia cantidad, no en cada edición de cualquier producto.
+  const addProduct = useCallback((productId: string) => setQty(productId, 1), [setQty]);
+  const incProduct = useCallback(
+    (productId: string) => setQty(productId, (linesRef.current[productId] ?? 0) + 1),
+    [setQty],
+  );
+  const decProduct = useCallback(
+    (productId: string) => setQty(productId, (linesRef.current[productId] ?? 0) - 1),
+    [setQty],
   );
 
   // Propina: el OrderPanel decide el modo (10% / custom / none) y nos pasa el body.
@@ -229,9 +253,9 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
           tipBody.tipPercent && tipBody.tipPercent > 0 ? tipBody.tipPercent : null;
         return { ...prev, tip: newTip, tipPercent: newTipPercent, total: base + newTip };
       });
-      void sync(lines, tipBody, { silent: true }); // persiste en segundo plano; reconcilia al responder
+      void sync(linesRef.current, tipBody, { silent: true }); // persiste en segundo plano; reconcilia al responder
     },
-    [lines, sync],
+    [sync],
   );
 
   // Scroll-spy: pinta el chip activo a medida que las secciones cruzan el top.
@@ -248,7 +272,10 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
         const top = visible[0];
         if (top) {
           const cat = (top.target as HTMLElement).dataset.cat;
-          if (cat) setActiveCat(cat);
+          if (cat && cat !== activeCatRef.current) {
+            activeCatRef.current = cat;
+            setActiveCat(cat);
+          }
         }
       },
       { rootMargin: '-140px 0px -55% 0px', threshold: 0 },
@@ -257,17 +284,18 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
     return () => obs.disconnect();
   }, [categories]);
 
-  const scrollToCat = (cat: string) => {
+  const scrollToCat = useCallback((cat: string) => {
     const el = sectionRefs.current[cat];
     if (!el) return;
     isClicking.current = true;
+    activeCatRef.current = cat;
     setActiveCat(cat);
     const y = el.getBoundingClientRect().top + window.scrollY - 124;
     window.scrollTo({ top: y, behavior: 'smooth' });
     setTimeout(() => {
       isClicking.current = false;
     }, 700);
-  };
+  }, []);
 
   const itemCount = cart.items.reduce((acc, it) => acc + it.qty, 0);
   const businessOpen = data.businessOpen !== false;
@@ -275,7 +303,7 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
   const canPay = cart.items.length > 0 && hasDeliveryData && !paying && businessOpen;
 
   const handlePay = useCallback(async () => {
-    if (cart.items.length === 0 || !businessOpen) return;
+    if (cartRef.current.items.length === 0 || !businessOpen) return;
     setPaying(true);
     setError(null);
     // Congelar el total: a partir de acá ignoramos cambios de propina diferidos
@@ -288,7 +316,7 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
       // se firma con order.total de la BD. Sin esperar este PUT, pay() firmaría
       // el total viejo (sin propina) y el webhook lo rechazaría con "monto no
       // coincide". Re-enviamos el carrito con la propina actual y esperamos.
-      const flushed = await sync(lines, undefined, { silent: true });
+      const flushed = await sync(linesRef.current, undefined, { silent: true });
       if (!flushed) {
         // sync ya mostró el error (o disparó onUnusable y navegó fuera).
         totalLockedRef.current = false;
@@ -374,7 +402,7 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
       setError(err instanceof Error ? err.message : 'No se pudo iniciar el pago');
       setPaying(false);
     }
-  }, [orderId, cart.items.length, prefilledCustomerName, prefilledCustomerEmail, onUnusable, businessOpen, sync, lines]);
+  }, [orderId, prefilledCustomerName, prefilledCustomerEmail, onUnusable, businessOpen, sync]);
 
   const rejectionMessage = data.order.wompiStatusMessage ?? null;
 
@@ -435,9 +463,9 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
         <main className={styles.main}>
           <PromosActiveSection
             lines={lines}
-            onAdd={(id) => setQty(id, (lines[id] ?? 0) + 1)}
-            onInc={(id) => setQty(id, (lines[id] ?? 0) + 1)}
-            onDec={(id) => setQty(id, (lines[id] ?? 0) - 1)}
+            onAdd={addProduct}
+            onInc={incProduct}
+            onDec={decProduct}
           />
           {categories.map((c) => {
             const theme = pickCategoryTheme(c.cat);
@@ -466,9 +494,9 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
                       product={p}
                       qty={lines[p.id] ?? 0}
                       promo={promoByProductId.get(p.id)}
-                      onAdd={() => setQty(p.id, 1)}
-                      onInc={() => setQty(p.id, (lines[p.id] ?? 0) + 1)}
-                      onDec={() => setQty(p.id, (lines[p.id] ?? 0) - 1)}
+                      onAdd={addProduct}
+                      onInc={incProduct}
+                      onDec={decProduct}
                     />
                   ))}
                 </div>
@@ -547,7 +575,7 @@ export function OrderBuilder({ data, onUnusable }: OrderBuilderProps) {
 
 /* ---------- Thumbnail ---------- */
 
-function Thumb({ product }: { product: CatalogItem }) {
+const Thumb = memo(function Thumb({ product }: { product: CatalogItem }) {
   const theme = pickCategoryTheme(product.cat);
   // Si el producto tiene foto, la mostramos a sangre. El placeholder con
   // ícono+grid solo aparece cuando img viene null (catálogo recién creado
@@ -566,7 +594,7 @@ function Thumb({ product }: { product: CatalogItem }) {
       <Ico size={58} />
     </div>
   );
-}
+});
 
 /* ---------- Product card ---------- */
 
@@ -574,12 +602,12 @@ interface ProductCardProps {
   product: CatalogItem;
   qty: number;
   promo?: ActivePromotion;
-  onAdd: () => void;
-  onInc: () => void;
-  onDec: () => void;
+  onAdd: (productId: string) => void;
+  onInc: (productId: string) => void;
+  onDec: (productId: string) => void;
 }
 
-function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardProps) {
+const ProductCard = memo(function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardProps) {
   // Precio descontado por unidad (solo cuando es calculable: percent/fixed).
   // Para free_item / 2x1 el badge avisa pero el precio unitario no cambia.
   const discounted = promo ? previewDiscountedPrice(promo, product.price) : null;
@@ -615,7 +643,7 @@ function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardPr
             <button
               type="button"
               className={styles.addBtn}
-              onClick={onAdd}
+              onClick={() => onAdd(product.id)}
               aria-label={`Agregar ${product.name}`}
             >
               <Icon.Plus size={14} />
@@ -625,7 +653,7 @@ function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardPr
             <div className={styles.stepper}>
               <button
                 type="button"
-                onClick={onDec}
+                onClick={() => onDec(product.id)}
                 aria-label={qty === 1 ? `Quitar ${product.name}` : `Restar uno a ${product.name}`}
               >
                 {qty === 1 ? <Icon.X size={14} /> : <MinusGlyph />}
@@ -633,7 +661,7 @@ function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardPr
               <span className={styles.stepperQty}>{qty}</span>
               <button
                 type="button"
-                onClick={onInc}
+                onClick={() => onInc(product.id)}
                 aria-label={`Sumar ${product.name}`}
               >
                 <Icon.Plus size={14} />
@@ -644,7 +672,7 @@ function ProductCard({ product, qty, promo, onAdd, onInc, onDec }: ProductCardPr
       </div>
     </div>
   );
-}
+});
 
 function MinusGlyph() {
   return (
@@ -681,7 +709,7 @@ interface PromosActiveSectionProps {
   onDec: (productId: string) => void;
 }
 
-function PromosActiveSection({ lines, onAdd, onInc, onDec }: PromosActiveSectionProps) {
+const PromosActiveSection = memo(function PromosActiveSection({ lines, onAdd, onInc, onDec }: PromosActiveSectionProps) {
   const { data } = useQuery({
     queryKey: ['promotions', 'active'],
     queryFn: () => fetchActivePromotions(),
@@ -715,7 +743,7 @@ function PromosActiveSection({ lines, onAdd, onInc, onDec }: PromosActiveSection
       </div>
     </div>
   );
-}
+});
 
 interface PromoActiveCardProps {
   promo: ActivePromotion;
@@ -725,7 +753,7 @@ interface PromoActiveCardProps {
   onDec: (productId: string) => void;
 }
 
-function PromoActiveCard({ promo, lines, onAdd, onInc, onDec }: PromoActiveCardProps) {
+const PromoActiveCard = memo(function PromoActiveCard({ promo, lines, onAdd, onInc, onDec }: PromoActiveCardProps) {
   const badge = badgeForPromo(promo);
   return (
     <div className={styles.promoActiveCard}>
@@ -797,7 +825,7 @@ function PromoActiveCard({ promo, lines, onAdd, onInc, onDec }: PromoActiveCardP
       )}
     </div>
   );
-}
+});
 
 /** Marca corta para el badge del card de promo. */
 function badgeForPromo(p: ActivePromotion): string {
@@ -856,7 +884,7 @@ interface OrderPanelProps {
   onTip: (tipBody: { tipPercent?: number; tip?: number }) => void;
 }
 
-function OrderPanel({
+const OrderPanel = memo(function OrderPanel({
   cart,
   delivery,
   customer,
@@ -1149,4 +1177,4 @@ function OrderPanel({
       {syncing && !empty && <p className={styles.payHint}>Actualizando…</p>}
     </div>
   );
-}
+});
